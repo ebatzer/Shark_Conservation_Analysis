@@ -1,0 +1,107 @@
+---
+title: "Using rFishbase"
+output:
+  html_document:
+    df_print: paged
+---
+
+See tutorial here: https://cran.r-project.org/web/packages/rfishbase/vignettes/tutorial.html
+
+```{r}
+# devtools::install_github("ropensci/rfishbase")
+library(magrittr)
+library(rfishbase)
+library(tidyverse)
+```
+
+### Accessing the taxon list
+
+Here, I load in the species list that Alex and John have already assembled and attempt to 1) find the species that match with fishbase's records, 2) standardize the names with known taxonomic changes, and 3) find those species whose names we need to correct.
+
+```{r}
+prelim_data <- read.csv("../data/Prelim Fishbase Data.csv", 
+                        skip = 2,  # First couple rows are blank
+                        header = TRUE, 
+                        stringsAsFactors = FALSE)
+
+elasmobranchs <- species_list(Class = "Elasmobranchii")
+
+p_fullnames <- paste(prelim_data$Genus, prelim_data$species, sep = " ") %>% trimws()
+
+sharks <- p_fullnames[p_fullnames %in% elasmobranchs]
+
+need_check <- p_fullnames[!(p_fullnames %in% elasmobranchs)]
+
+# the validate_names function was giving some funky output, so I edited it a little
+fixed_names <- lapply(lapply(need_check, validate_names), function(x) if(!is.na(x) > 0){ x[!is.na(x)]}else{'no match'})
+
+# Adding names with a match to our total shark list
+sharks <- append(sharks, unlist(fixed_names)[unlist(fixed_names) != "no match"])
+
+# Creating a new dataset where names can be checked
+name_errors <- data.frame("recorded" = need_check, "fishbase" = unlist(fixed_names))
+
+write.csv(x = name_errors, file = "../data/species_to_check.csv")
+```
+
+Names that were standardized or don't match with fishbase are below:
+
+```{r}
+name_errors
+```
+
+Once correcting for inconsistencies in naming conventions, we have a total shark list of:
+
+```{r}
+length(sharks)
+```
+
+### Accessing the databases
+
+There are a ton of different datasets available here. Below, I'll show the basic code to find the datasets and see what columns are available, but you'll likely need to refer back to fishbase itself to determine which 
+
+Most of what you want will probably come from the `species` dataset. To see what's available in this dataset, you can use the `species_fields()` command:
+
+```{r}
+species_fields
+```
+
+You could start by just querying the whole species table for our dataset, but that's likely not super efficient. You can add the list of columns you'd like to query by adding the names in the second part of the `species` command:
+
+```{r}
+species(sharks, c("Species", "FBname"))
+```
+
+Or you could pull out a whole subset of columns from the `species_fields` list:
+
+```{r}
+cols <- c('Species', species_fields$fishing)
+species(sharks, cols)
+```
+
+Note that fishbase provides a vulnerability score that may also be useful to compare against. Info on how this was calculated is available here: https://www.sciencedirect.com/science/article/pii/S000632070500042X#fig2
+
+```{r}
+species(sharks, c("Species", "Vulnerability"))
+```
+
+You can also find other tables that might be useful. Perhaps the easiest way to find these might be to start with the package call, `rfishbase::`, then tab-complete to see what's available.
+
+```{r}
+rfishbase::ecology(sharks)
+```
+
+You can also use the `list_fields()` command with a certain characteristic you'd like to investigae, like "Length", that will return other tables that might be of interest.
+
+```{r}
+rfishbase::list_fields("Length")
+rfishbase::morphology(sharks)
+```
+
+## Alex and John To-Do:
+
+* Fix species names that conflict with fishbase
+* Determine which columns are needed
+* Extract a species-level dataset containing species identifiers as rows and meaningful characteristics as columns
+
+Once this is done, we can figure out what sort of model will be most appropriate for the amount of data we have. I can also start messing around with where to find some distributional maps for species, but feel free to get started on that, as well.
